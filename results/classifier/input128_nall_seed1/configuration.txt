@@ -1,0 +1,22 @@
+Model      : ResNet-18, ImageNet weights
+Started    : 2026-11-06 14:22:45
+Device     : cuda:1
+
+Input pipeline   : 360 -> 128 -> 224
+Rare classes     : basophil, lymphocyte
+Images per rare  : all
+Learning rate    : 0.0003
+Weight decay     : 0.0001
+Batch size       : 64
+Epochs           : 30
+Random seed      : 1
+
+Training images per class:
+  basophil      1035
+  eosinophil    2658
+  erythroblast  1326
+  ig            2344
+  lymphocyte    1038
+  monocyte      1213
+  neutrophil    2802
+  platelet      2008
