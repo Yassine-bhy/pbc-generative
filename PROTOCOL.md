@@ -63,16 +63,82 @@ evaluation, and that model is not part of the study.
 
 ---
 
-## 2. Induced imbalance — *not yet frozen*
+## 2. Induced imbalance — frozen 6 November 2026
 
-Subsampling levels N for the rare classes; subsampling procedure (seeded, deterministic);
-whether valid is subsampled in proportion.
+**Levels.** Both rare classes (D3) are cut to the same N ∈ {50, 150, 400}. The other six
+classes keep all their training images. The uncut training set is a reference condition.
+Against the largest class (neutrophil, 2,802) the ratios are about 56:1, 19:1 and 7:1.
 
-## 3. Seeds — *not yet frozen*
+**Procedure.** For replicate r, each rare class is randomly permuted with seed r and its
+first N images are kept (`data.subsample`). The subsets are therefore nested: at a given
+seed, the 50 images are contained in the 150, which are contained in the 400. Changing N
+changes only the number of images, never which images are present.
 
-## 4. Downstream classifier — *not yet frozen*
+**Rare classes in code.** Computed from the cleaned training labels by the D3 rule
+(`data.rare_classes`), never hardcoded.
 
-Architecture, optimiser, schedule, augmentation, epochs: identical across every arm.
+**Validation is not subsampled** (D1). Consequence, reported: model selection uses a
+validation set in which the rare classes are not rare, which a genuine low-data
+practitioner would not have. This applies equally to every arm.
+
+## 3. Seeds and replicates — frozen 6 November 2026
+
+**Replicate.** One complete repetition of the experiment with independent randomness.
+Replicate r ∈ {0, 1, 2, 3, 4} uses subset seed r, generator seed r and classifier seed r.
+The subset (which images are kept) is treated as part of the randomness being measured,
+not fixed once.
+
+**Pairing.** Within a replicate, every arm sees the same subset. Arms are compared through
+per-replicate differences (arm minus baseline), which removes subset-to-subset variation
+from the comparison.
+
+**Reference runs** on the uncut training set use classifier seeds 0–4.
+
+**Seeds are never selected.** Every listed seed is run and reported; no seed is replaced.
+
+**GPU nondeterminism.** cuDNN nondeterministic kernels are allowed (speed). The same seed
+may give results differing in the last decimals. Uncertainty is measured across
+replicates, which is much larger than this effect.
+
+**Budget.** 3 levels × 2 generators × 5 replicates = 30 generator runs;
+3 levels × 3 arms × 5 replicates = 45 classifier runs, plus reference runs.
+
+## 4. Downstream classifier — frozen 6 November 2026
+
+Identical in every arm and every condition. It is a control variable, not tuned during
+the study. Implementation: `train_classifier.py`.
+
+**Architecture.** ResNet-18 with ImageNet-pretrained weights (`IMAGENET1K_V1`); final
+layer replaced by a linear layer with 8 outputs.
+
+**Input.** 360×360 centre crop → 128×128 (D4) → 224×224, ImageNet normalisation.
+
+**Augmentation (training only).** Random horizontal and vertical flips; rotation by a
+random multiple of 90°; colour jitter (brightness 0.1, contrast 0.1, saturation 0.1,
+hue 0.02).
+
+**Training.** Cross-entropy loss; AdamW, learning rate 3×10⁻⁴, weight decay 10⁻⁴;
+cosine schedule over 30 epochs; batch size 64.
+
+**Model selection.** The epoch with the highest validation macro-F1 is kept.
+
+**Logged every epoch.** Learning rate; training loss and accuracy (measured on augmented
+images); validation loss, accuracy, macro-F1, balanced accuracy, MCC, and recall for each
+class.
+
+### 4b. Resolution-cost experiment
+
+Measures the cost of the 128×128 bottleneck (D4). Two conditions, uncut training set,
+classifier seeds 0–4 each:
+
+- **native:** 360 → 224
+- **128:** 360 → 128 → 224
+
+Everything else as above. Both conditions feed the network 224×224 inputs, so the only
+difference is the detail lost at 128×128. Reported: mean and standard deviation over
+seeds of validation macro-F1 and per-class recall, for both conditions and their
+difference; test scores are computed at the end of the study (D5). No decision in the
+study depends on the outcome.
 
 ## 5. Baseline arm — *not yet frozen*
 

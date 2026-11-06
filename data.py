@@ -32,3 +32,18 @@ class PBCDataset(Dataset):
         if self.transform is not None:
             img = self.transform(img)
         return img, self.labels[idx]
+
+
+def rare_classes(labels, k=2):
+    return torch.bincount(labels).argsort()[:k].tolist()
+
+
+def subsample(labels, classes, n, seed):
+    g = torch.Generator().manual_seed(seed)
+    keep = []
+    for c in range(int(labels.max()) + 1):
+        idx = (labels == c).nonzero().flatten()
+        if c in classes:
+            idx = idx[torch.randperm(len(idx), generator=g)[:n]]
+        keep.append(idx)
+    return torch.cat(keep).sort().values

@@ -11,3 +11,4 @@ epoch_*.png
 __pycache__/
 *.ipynb
 Untitled*
+logs/
