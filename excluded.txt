@@ -1,0 +1,17 @@
+train/basophil/ba_685720.jpg
+train/basophil/ba_786369.jpg
+train/basophil/ba_80990.jpg
+train/basophil/ba_809918.jpg
+train/basophil/ba_858229.jpg
+train/basophil/ba_988506.jpg
+train/eosinophil/eo_220125.jpg
+train/eosinophil/eo_225902.jpg
+train/eosinophil/eo_621854.jpg
+train/eosinophil/eo_738445.jpg
+train/eosinophil/eo_873756.jpg
+train/eosinophil/eo_918881.jpg
+train/eosinophil/eo_994040.jpg
+train/ig/pmy_586364.jpg
+train/ig/pmy_753076.jpg
+train/monocyte/mo_997225.jpg
+train/neutrophil/bne_191112.jpg
