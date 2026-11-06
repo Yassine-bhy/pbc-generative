@@ -1,0 +1,13 @@
+Data
+*.idx3-ubyte
+*.idx1-ubyte
+*.jpg
+*.jpeg
+*.pt
+*.pth
+models/
+epoch_*.png
+.ipynb_checkpoints/
+__pycache__/
+*.ipynb
+Untitled*

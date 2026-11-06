@@ -1,0 +1,13 @@
+Model      : Variational Autoencoder (VAE)
+Started    : 2026-09-05 22:38:20
+Device     : cuda:1
+
+Parameters
+----------
+Reconstruction loss   : binary cross-entropy
+Reconstruction weight : 1
+Latent dimension      : 32
+Learning rate         : 0.001
+Batch size            : 64
+Epochs                : 25
+Random seed           : 0

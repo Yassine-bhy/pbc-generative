@@ -1,0 +1,11 @@
+Model      : cVAE-cGAN
+Started    : 2026-09-26 18:29:22
+Device     : cuda
+
+Latent dimension : 64
+Learning rate    : 0.0002
+Batch size       : 64
+Epochs           : 50
+Gamma (decoder)  : 0.001
+D skip accuracy  : 0.8
+Random seed      : 0

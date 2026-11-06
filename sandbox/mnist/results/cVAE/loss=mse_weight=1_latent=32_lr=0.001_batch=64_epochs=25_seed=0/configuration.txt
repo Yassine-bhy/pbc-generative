@@ -1,0 +1,13 @@
+Model      : Conditional Variational Autoencoder (cVAE)
+Started    : 2026-09-06 02:14:26
+Device     : cuda:1
+
+Parameters
+----------
+Reconstruction loss   : mean squared error
+Reconstruction weight : 1
+Latent dimension      : 32
+Learning rate         : 0.001
+Batch size            : 64
+Epochs                : 25
+Random seed           : 0

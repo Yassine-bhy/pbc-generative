@@ -1,0 +1,10 @@
+Model      : cGAN
+Started    : 2026-09-10 15:42:49
+Device     : cuda:1
+
+Latent dimension : 64
+Learning rate    : 0.0002
+Batch size       : 64
+Epochs           : 50
+D steps per G    : 3
+Random seed      : 0
