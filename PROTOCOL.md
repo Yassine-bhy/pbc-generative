@@ -1,4 +1,4 @@
-# PROTOCOL — PBC generative augmentation study
+# PROTOCOL: PBC generative augmentation study
 
 This file freezes experimental decisions **before** the experiments they govern are run.
 Its git history is the timestamp: a decision committed before a result cannot have been
@@ -10,7 +10,7 @@ its reason. Nothing above an amendment is edited.
 
 ---
 
-## 1. Data — frozen 6 November 2026
+## 1. Data (frozen 6 November 2026)
 
 Evidence for every decision below: `00_data_audit.py`.
 
@@ -63,7 +63,7 @@ evaluation, and that model is not part of the study.
 
 ---
 
-## 2. Induced imbalance — frozen 6 November 2026
+## 2. Induced imbalance (frozen 6 November 2026)
 
 **Levels.** Both rare classes (D3) are cut to the same N ∈ {50, 150, 400}. The other six
 classes keep all their training images. The uncut training set is a reference condition.
@@ -77,11 +77,13 @@ changes only the number of images, never which images are present.
 **Rare classes in code.** Computed from the cleaned training labels by the D3 rule
 (`data.rare_classes`), never hardcoded.
 
-**Validation is not subsampled** (D1). Consequence, reported: model selection uses a
-validation set in which the rare classes are not rare, which a genuine low-data
-practitioner would not have. This applies equally to every arm.
+**Validation is not subsampled** (D1). The validation set is the same in every condition
+and contains about 115 images of each rare class. This makes model selection reliable and
+identical across arms, but it is unrealistic: a practitioner with only 50 basophils for
+training would not have 115 more to validate on. Every arm has this advantage, and it is
+reported as a limitation.
 
-## 3. Seeds and replicates — frozen 6 November 2026
+## 3. Seeds and replicates (frozen 6 November 2026)
 
 **Replicate.** One complete repetition of the experiment with independent randomness.
 Replicate r ∈ {0, 1, 2, 3, 4} uses subset seed r, generator seed r and classifier seed r.
@@ -100,10 +102,7 @@ from the comparison.
 may give results differing in the last decimals. Uncertainty is measured across
 replicates, which is much larger than this effect.
 
-**Budget.** 3 levels × 2 generators × 5 replicates = 30 generator runs;
-3 levels × 3 arms × 5 replicates = 45 classifier runs, plus reference runs.
-
-## 4. Downstream classifier — frozen 6 November 2026
+## 4. Downstream classifier (frozen 6 November 2026)
 
 Identical in every arm and every condition. It is a control variable, not tuned during
 the study. Implementation: `train_classifier.py`.
@@ -140,26 +139,309 @@ seeds of validation macro-F1 and per-class recall, for both conditions and their
 difference; test scores are computed at the end of the study (D5). No decision in the
 study depends on the outcome.
 
-## 5. Baseline arm — *not yet frozen*
+## 5. Baseline arm (frozen 7 November 2026)
 
-Imbalance remedies included; tuning budget (must equal that of the synthetic arms).
+The best treatment of imbalance without a generative model, on the classifier of section 4,
+which already includes its augmentation. A synthetic arm counts as a success only if it
+beats this arm: against a weak baseline, any generator would look useful.
 
-## 6. Generative arms — *not yet frozen*
+**Configurations (3).**
+- **none:** plain cross-entropy;
+- **weighted:** cross-entropy with class weights proportional to 1 / (number of training
+  images of the class), normalised to mean 1, so that a mistake on a rare image costs more;
+- **oversampling:** each training image is drawn with probability proportional to
+  1 / (number of training images of its class), so every class is drawn equally often. An
+  epoch has as many draws as there are training images.
 
-Models, training budget, number of synthetic images added per rare class.
+**Selection.** For each replicate and each N, the configuration with the highest validation
+macro-F1 is kept. Taking the best of 3 makes the winner's validation score slightly
+optimistic. Its test score is not affected, since the test set plays no part in the choice.
 
-## 7. Metrics and decision rules — *not yet frozen*
+**Equal tuning.** Every arm, baseline or synthetic, has exactly 3 configurations, selected
+by this rule. An arm with more configurations would have more chances to win by luck.
 
-Macro-F1, per-class recall, balanced accuracy, MCC. Effect size counted as "helped",
-statistical test, multiple-comparison correction.
+## 6. Generative arms (frozen 7 November 2026)
 
-## 8. Generalisation and memorisation checks — *not yet frozen*
+**Models.** A class-conditional VAE (cVAE) and a class-conditional GAN (cGAN). Each takes a
+class label and produces a 128×128 RGB image of that class. Implementation:
+`train_generator.py`, `models.py`.
 
-Near-duplicate leakage check (train ↔ test, feature space); nearest-neighbour analysis of
-synthetic images; membership inference per arm.
+**Architecture.** Latent dimension 128; the label enters as a one-hot vector. Batch size 64;
+one iteration is one batch.
+
+- *Decoder / generator.* The cVAE decoder and the cGAN generator are the same network: a
+  linear layer to a 512×4×4 grid, then five transposed convolutions (kernel 4, stride 2)
+  with batch normalisation and ReLU, of widths 512, 256, 128, 64, 32
+  (4 → 8 → 16 → 32 → 64 → 128), then a 3×3 convolution to the three colour channels,
+  followed by a sigmoid (cVAE) or a tanh (cGAN). Images are generated with the network in
+  evaluation mode.
+- *cVAE encoder.* A linear layer turns the label into an extra 128×128 image channel. Then
+  five stride-2 convolutions of widths 32, 64, 128, 256, 512, with batch normalisation
+  (except the first) and LeakyReLU 0.2, and linear layers to the mean and log-variance.
+- *cVAE loss* for one image: 50 × the sum of squared pixel errors, plus the KL divergence.
+  The factor 50 is 1/(2σ²) with σ = 0.1, a Gaussian likelihood. Adam, learning rate 5×10⁻⁴.
+- *cGAN discriminator.* Five stride-2 convolutions of widths 32 to 512 with LeakyReLU 0.2,
+  summed over positions. The output is a linear score plus the inner product of these
+  features with a learned vector for the label (projection discriminator, Miyato and
+  Koyama 2018). Spectral normalisation on every layer, which limits how fast the
+  discriminator can change. No batch normalisation: with it, the score of one image would
+  depend on the other images of its batch, and the attack of 8.3 needs a score per image.
+- *cGAN training.* Hinge loss. Adam, β = (0, 0.999), learning rate 10⁻⁴ for the generator
+  and 4×10⁻⁴ for the discriminator, one discriminator step per generator step. DiffAugment
+  (Zhao et al. 2020): a random change of colour, a random translation and a random cutout
+  are applied to every image, real or generated, before the discriminator. This stops the
+  discriminator from memorising the few rare images, the usual way GANs fail on small
+  datasets.
+
+**Training data.** The replicate's training subset: all 8 classes, rare classes cut to N.
+Removed images are never seen by a generator or a classifier; they are the non-members of
+section 8.
+
+Batches are class-balanced, as in the oversampling configuration of section 5. With natural
+sampling at N = 50, each rare class would be 50 / 12,451 ≈ 0.4% of the draws and the
+generator would barely learn it. With balanced sampling, each rare image is drawn about 31
+times per epoch at N = 50. Repeated exposure is also how small training sets get memorised,
+which section 8 measures.
+
+Each real image is transformed by one of the 8 rotations and flips of the square, the
+symmetries the classifier already uses (section 4). A rotated cell is still a valid cell.
+Since the generators can then produce rotated copies of training images, every distance in
+section 8 is minimised over these 8 transforms.
+
+**Pilot.** One run per model on the uncut training set: 40,000 iterations, 20 checkpoints
+(every 2,000). Its purpose is to find bugs and fix the hyperparameters and the budget; it
+may change learning rates, widths, latent dimension and loss weights. It is judged only on
+training losses, samples looked at by eye, judge accuracy on rare-class samples (500 per
+class), and the Fréchet distance to the validation images.
+
+The Fréchet distance fits a Gaussian to the features (section 8) of each of two image sets
+and measures the distance between the two Gaussians; lower means the generated images are
+distributed more like the real ones. It is computed between the validation images and one
+generated image per validation image, with the same label and fixed noise, so every
+checkpoint is compared on the same draws.
+
+Classifier scores and the test set are never used, so the pilot cannot tune a generator
+towards the result being measured. Every pilot run is kept.
+
+**Budget.** Counted in iterations and identical at every N; an epoch would have a different
+length at each N. The budget is the earliest pilot checkpoint whose Fréchet distance is
+within 5% of the pilot's minimum: training longer barely improves quality, and memorisation
+tends to grow with training time. The hyperparameters finally used and the budget are
+written in a dated amendment before the first subsampled run.
+
+**Checkpoint.** The final one. No checkpoint is chosen per run.
+
+**Interruptions.** A run stopped by a technical failure resumes from its last saved state,
+same seed, and the resumption is recorded in its log. The result can differ slightly from
+an uninterrupted run (section 3, GPU nondeterminism).
+
+**Synthetic sets.** For replicate r, 2000 images per rare class are drawn once with seed r
+and saved as 128×128 PNG, the format of the real images after resizing. They enter the
+classifier pipeline of section 4 at the 128×128 step. No image is removed: filtering would
+be a choice made after seeing the output. The saved set is also the released set attacked
+in section 8.
+
+**Configurations (3).** S ∈ {500, 1000, 2000} synthetic images added per rare class: the
+first S of the saved set, so the sets are nested as in section 2. Plain cross-entropy.
+Selection as in section 5.
+
+**Judge.** The resolution-cost classifier (section 4b, input 128, seed 0) labels generated
+images. Its accuracy on each rare class's samples is reported for every generator run, and
+decides the D4 fallback (A1).
+
+**Out of scope.** Synthetic images combined with weighting or oversampling.
+
+**Cost.** 3 N × 2 generators × 10 replicates (A4) = 60 generator runs;
+3 N × 3 arms × 3 configurations × 10 replicates = 270 classifier runs.
+
+## 7. Metrics and decision rules (frozen 7 November 2026)
+
+**Test evaluation.** For each arm, N and replicate, only the configuration selected on
+validation is evaluated on test, once (D5). The prediction for every test image is saved,
+for the bootstrap below. The reference condition is defined in A2.
+
+**Primary endpoint.** The conclusion rests on one number: the rare-class F1, mean of the
+test F1 of the two rare classes (D3). For a class, F1 = 2TP / (2TP + FP + FN), where TP are
+its images predicted as it, FN its images predicted as another class, and FP images of
+other classes predicted as it. F1 counts both missed rare cells and other cells wrongly
+called rare, so an arm cannot raise it just by predicting the rare classes more often.
+
+**Secondary endpoints.** Macro-F1, which checks that the other classes are not harmed;
+balanced accuracy; MCC; rare-class recall; recall and F1 of each class; and the fraction of
+the gap closed, (arm − baseline) / (reference − baseline), on the means over replicates.
+
+**Effect.** For each synthetic arm, N and replicate r,
+Δ_r = endpoint(arm, r) − endpoint(baseline, r), both trained on the same subset
+(section 3). The effect is Δ̄, the mean of Δ_r over the R replicates.
+
+**Uncertainty.** Two sources are counted.
+- Training randomness (subset, initialisation, batch order): s², the variance of Δ_r over
+  replicates.
+- Test sampling: every replicate is scored on the same 845 test images, so s² does not
+  include it. v_test is the variance of Δ̄ over 10,000 bootstrap resamples of the test
+  images. Each resample draws test images with replacement within each class, and the same
+  resample is applied to every replicate and every arm.
+
+SE = √(s²/R + v_test). The 95% interval is Δ̄ ± t · SE, where t is the 97.5% quantile of
+Student's t distribution with R − 1 degrees of freedom.
+
+**Test.** T = Δ̄ / SE, compared with Student's t with R − 1 degrees of freedom, two-sided.
+The family is 6 tests: each synthetic arm against the baseline, at each N. Holm correction
+at level 0.05: sort the p-values p(1) ≤ … ≤ p(6), reject the i-th as long as
+p(i) ≤ 0.05 / (7 − i), and stop at the first that fails. This keeps the probability of any
+false rejection in the family at or below 0.05.
+
+**Decision.** For each synthetic arm and each N, on the primary endpoint, with δ = 0.02
+(about one test image of each rare class, since 1/61 ≈ 0.016):
+- **helped:** significant after correction, Δ̄ > 0;
+- **hurt:** significant after correction, Δ̄ < 0;
+- **no effect larger than δ:** not significant, and the 95% interval lies inside (−δ, δ);
+- **inconclusive:** every other case.
+
+**Exploratory.** Secondary endpoints and the other comparisons (cGAN against cVAE, each arm
+against the reference) are reported with 95% intervals, without tests.
+
+**Power.** With R = 10 (A4), the strictest Holm threshold (0.05/6, two-sided, 9 degrees of
+freedom) is |T| > 3.4. Leaving out v_test, the smallest detectable effect is therefore
+about 3.4 / √10 ≈ 1.1 times the standard deviation of Δ_r. v_test does not shrink with R,
+so it sets a floor under the detectable effect.
+
+## 8. Memorisation checks (frozen 7 November 2026)
+
+**Distance.** φ(x) is the 512-dimensional output of the global pooling layer of an
+ImageNet-pretrained ResNet-18 (`IMAGENET1K_V1`, never trained on this data), with the
+128×128 input resized to 224×224 and ImageNet normalisation. The distance between two
+images is d(x, x') = min over the 8 transforms T of section 6 of ‖φ(Tx) − φ(x')‖₂, so a
+rotated or flipped copy counts as a copy.
+
+### 8.1 Train–test near-duplicates
+
+Cells cropped from the same smear can be in both train and test (section 1). For every test
+image, the distance to its nearest cleaned training image is computed. Before any test
+evaluation, the 50 closest pairs are inspected by eye, and pairs showing the same cell are
+listed in `near_duplicates.txt`. Test is not modified (D1); the endpoints of section 7 are
+also reported without the listed images.
+
+### 8.2 Members and non-members
+
+A membership attack tries to tell whether an image was in a generator's training set. It is
+evaluated on images whose answer is known, in the rare classes only, for each replicate and
+each N:
+- **members:** the N images of the class kept by `data.subsample`;
+- **non-members:** the images of the same class removed by the same call.
+
+Membership is decided by a random permutation, so a score that does not use the trained
+model separates the two groups no better than chance (expected AUC 0.5). Many published
+attacks are invalid because their members and non-members differ in distribution (Das,
+Zhang and Tramèr 2024; Dubiński et al. 2024); random assignment rules this out. It is
+checked with a score that uses no model, the mean pixel intensity, whose AUC is reported.
+
+The majority classes keep all their training images, so they have no non-members and are
+not attacked.
+
+### 8.3 Attack scores
+
+Each attack gives an image x of label y a score s(x); a higher score means "predicted
+member".
+- **Nearest synthetic image** (cVAE and cGAN). Uses only the saved synthetic set, which is
+  what someone publishing synthetic data releases. s(x) = − min over the 2000 synthetic
+  images g of class y of d(x, g).
+- **Discriminator** (cGAN). Uses the weights. A discriminator that has overfitted scores
+  its own training images higher (Hayes et al. 2019). s(x) = mean over the 8 transforms T
+  of the final discriminator's output for (Tx, y), without DiffAugment.
+- **ELBO** (cVAE). Uses the weights. The loss is lower on training images. s(x) = − the
+  training loss of (x, y), averaged over 16 latent draws and the 8 transforms.
+
+**Calibration.** Some cells score high whether or not they were trained on. To remove this,
+an image's score is compared with the scores it receives from models that did not see it
+(Watson et al. 2022; offline LiRA, Carlini et al. 2022).
+1. Within each run, the scores of the members and non-members of a class are standardised
+   to mean 0 and standard deviation 1.
+2. For an image x in replicate r, the calibrated score is s̃_r(x) = s_r(x) − (mean of
+   s_r'(x) over the other replicates r' at the same N in which x is a non-member).
+
+Images with fewer than 2 such replicates are left out of the calibrated attack, and their
+number is reported. The subsets of different replicates are drawn independently, so this
+does not depend on membership in replicate r. Calibrated scores are the primary analysis;
+uncalibrated scores are also reported.
+
+### 8.4 Measures and tests
+
+For each arm, N and attack, with the two rare classes pooled:
+- the AUC, the probability that a random member scores higher than a random non-member,
+  per replicate, and its mean over replicates;
+- the true positive rate at a false positive rate of 1%, replicates pooled: the fraction of
+  members found when 1% of non-members are wrongly flagged.
+
+**Test.** One-sided permutation test. Null hypothesis: member and non-member scores are
+interchangeable. Statistic: mean AUC over replicates. The p-value comes from 10,000
+permutations of the membership labels within each replicate and class. The family is 12
+tests (2 arms × 3 N × 2 attacks), Holm correction at 0.05. The model-free check of 8.2 is
+reported, not tested.
+
+The effect of section 7 and the attack AUC are reported side by side for each arm and N, so
+the trade-off between utility and privacy can be read directly.
+
+### 8.5 Data copying
+
+Meehan et al. (2020), global version, for each arm, N, rare class and replicate: the
+distances from synthetic images to their nearest member are compared with the distances
+from non-members to their nearest member, by a Mann–Whitney test summarised by its Z
+statistic. Z < 0: synthetic images are closer to training images than unseen real images
+are (copying). Z > 0: they are farther (underfitting). Descriptive, no correction. The 16
+synthetic images closest to a member are shown next to that member.
+
+### 8.6 Saved during generator training
+
+The rest of section 8 is computed after training. The following cannot be recovered
+afterwards, so it is saved for every run:
+- the list of training images;
+- the final weights (generator and discriminator; encoder and decoder);
+- the weights at 25%, 50% and 75% of the budget;
+- the 2000 synthetic images per rare class;
+- every epoch, for the cGAN: the mean discriminator output on the epoch's training
+  batches, on the rare-class training images and on the validation set; for the cVAE: the
+  training loss, and the loss on the rare-class training images and on the validation set.
+
+### 8.7 Exploratory
+
+8.3 and 8.4 are repeated on the checkpoints at 25%, 50% and 75% of the budget. No tests,
+no decision.
 
 ---
 
 ## Amendments
 
-_None._
+### A1 (7 November 2026). D4 fallback checked on the pilot only
+
+As written, D4 could be triggered by any generator at any N: if the cGAN at N = 50 produced
+basophils the judge does not recognise, every arm would move to 64×64. But a generator that
+fails at small N is a result about that N, not evidence about resolution. On the uncut
+pilot, the rule does test whether 128×128 can be learned at all.
+
+The D4 fallback is checked once, on the pilot samples of each generator, by the judge of
+section 6 ("baseline classifier" in D4 means this judge). On subsampled runs the judge's
+accuracy is reported but triggers nothing. If the rule triggers, the judge and the 128
+condition of 4b are rerun at 64×64 before any subsampled run.
+
+### A2 (7 November 2026). Reference condition
+
+The uncut reference condition (section 3) is the 128 condition of 4b, seeds 0–4. Its
+classifier, data and seeds are exactly what the reference requires, so it is not retrained.
+
+### A3 (7 November 2026). Editorial
+
+The paragraph "Validation is not subsampled" of section 2 was rewritten without changing
+its content. A blank line was added before the heading of section 4, and the dashes in the
+headings of sections 1 to 4 were replaced by parentheses.
+
+### A4 (7 November 2026). Ten replicates
+
+With 5 replicates, the test of section 7 has 4 degrees of freedom and the strictest Holm
+threshold is |T| > 4.9, so only effects above about 2.2 times the standard deviation of
+Δ_r can be detected. With 10 replicates the threshold is 3.4 and the detectable effect
+about 1.1 times that standard deviation: twice as sensitive. Run time is not a constraint.
+
+Section 3 is changed: replicate r ∈ {0, 1, …, 9}, each with subset seed r, generator seed r
+and classifier seed r. The reference condition keeps classifier seeds 0–4 (A2); it enters
+no test.
